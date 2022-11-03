@@ -108,7 +108,8 @@ func testProduceConsumeStream(t *testing.T, client api.LogClient, config *Config
 		}, {
 			Value:  []byte("second message"),
 			Offset: 1,
-		}}
+		},
+	}
 	{
 		stream, err := client.ProduceStream(ctx)
 		require.NoError(t, err)
@@ -132,5 +133,4 @@ func testProduceConsumeStream(t *testing.T, client api.LogClient, config *Config
 			require.Equal(t, res.Record, &api.Record{Value: record.Value, Offset: uint64(i)})
 		}
 	}
-
 }
