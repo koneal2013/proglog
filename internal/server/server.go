@@ -3,15 +3,26 @@ package server
 import (
 	"context"
 
+	"google.golang.org/grpc"
+
 	api "github.com/koneal2013/proglog/api/v1"
-	"github.com/koneal2013/proglog/internal/log"
 )
 
 type Config struct {
-	CommitLog log.Log
+	CommitLog CommitLog
 }
 
 var _ api.LogServer = (*grpcServer)(nil)
+
+func NewGRPCServer(config *Config) (*grpc.Server, error) {
+	gsrv := grpc.NewServer()
+	if srv, err := newGrpcServer(config); err != nil {
+		return nil, err
+	} else {
+		api.RegisterLogServer(gsrv, srv)
+		return gsrv, nil
+	}
+}
 
 type grpcServer struct {
 	api.UnimplementedLogServer
@@ -71,4 +82,9 @@ func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Log_Consu
 			req.Offset++
 		}
 	}
+}
+
+type CommitLog interface {
+	Append(record *api.Record) (uint64, error)
+	Read(uint64) (*api.Record, error)
 }
