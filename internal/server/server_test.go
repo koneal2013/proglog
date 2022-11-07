@@ -28,6 +28,7 @@ func TestServer(t *testing.T) {
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
 		"consume past log boundary fails":                    testConsumePastBoundary,
 		"unauthorized fails":                                 testUnauthorized,
+		"test trace":                                         testTrace,
 	} {
 		t.Run(scenario, func(t *testing.T) {
 			rootClient, nobodyClient, config, teardown := setupTest(t, nil)
@@ -101,6 +102,10 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 		l.Close()
 		clog.Remove()
 	}
+}
+
+func testTrace(t *testing.T, client api.LogClient, _ api.LogClient, c *Config) {
+	t.Helper()
 }
 
 func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config) {
