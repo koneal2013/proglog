@@ -11,13 +11,14 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/koneal2013/proglog/internal/config"
 )
 
 // NewTrace configures an OpenTelemetry exporter and trace provider
-func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerProvider {
+func NewTrace(serviceName, collectorURL string, insecure bool) (*sdktrace.TracerProvider, error) {
 	tlsConfig, _ := config.SetupTLSConfig(config.TLSConfig{
 		CertFile: config.ServerCertFile,
 		KeyFile:  config.ServerKeyFile,
@@ -36,7 +37,6 @@ func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerP
 			otlptracegrpc.WithEndpoint(collectorURL),
 		),
 	)
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,7 +50,8 @@ func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerP
 		),
 	)
 	if err != nil {
-		log.Printf("Could not set resources: %v", err)
+		zap.L().Sugar().Errorf("Could not set resources: %v", err)
+		return nil, err
 	}
 
 	traceProvider := sdktrace.NewTracerProvider(
@@ -62,5 +63,5 @@ func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerP
 	otel.SetTracerProvider(traceProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-	return traceProvider
+	return traceProvider, nil
 }

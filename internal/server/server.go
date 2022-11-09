@@ -7,6 +7,8 @@ import (
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	otel_codes "go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -42,17 +44,16 @@ func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, err
 				return zap.Int64("grpc.time_ns", duration.Nanoseconds())
 			}),
 	}
-	logger.Info("test")
 	opts = append(opts, grpc.StreamInterceptor(
 		grpcmiddleware.ChainStreamServer(
 			grpc_ctxtags.StreamServerInterceptor(),
 			grpc_zap.StreamServerInterceptor(logger, zapOpts...),
 			grpcauth.StreamServerInterceptor(authenticate),
-			otelgrpc.StreamServerInterceptor(),
+			otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(otel.GetTracerProvider())),
 		)), grpc.UnaryInterceptor(grpcmiddleware.ChainUnaryServer(
 		grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
 		grpcauth.UnaryServerInterceptor(authenticate),
-		otelgrpc.UnaryServerInterceptor(),
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(otel.GetTracerProvider())),
 	)))
 	gsrv := grpc.NewServer(opts...)
 	if srv, err := newGrpcServer(config); err != nil {
@@ -74,10 +75,16 @@ func newGrpcServer(config *Config) (srv *grpcServer, err error) {
 }
 
 func (s *grpcServer) Produce(ctx context.Context, req *api.ProduceRequest) (*api.ProduceResponse, error) {
+	ctx, span := otel.GetTracerProvider().Tracer("proglog").Start(ctx, "Produce")
+	defer span.End()
 	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, produceAction); err != nil {
+		span.RecordError(err)
+		span.SetStatus(otel_codes.Error, err.Error())
 		return nil, err
 	}
 	if offset, err := s.CommitLog.Append(req.Record); err != nil {
+		span.RecordError(err)
+		span.SetStatus(otel_codes.Error, err.Error())
 		return nil, err
 	} else {
 		return &api.ProduceResponse{Offset: offset}, nil
@@ -85,10 +92,16 @@ func (s *grpcServer) Produce(ctx context.Context, req *api.ProduceRequest) (*api
 }
 
 func (s *grpcServer) Consume(ctx context.Context, req *api.ConsumeRequest) (*api.ConsumeResponse, error) {
+	ctx, span := otel.GetTracerProvider().Tracer("proglog").Start(ctx, "Consume")
+	defer span.End()
 	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, consumeAction); err != nil {
+		span.RecordError(err)
+		span.SetStatus(otel_codes.Error, err.Error())
 		return nil, err
 	}
 	if record, err := s.CommitLog.Read(req.Offset); err != nil {
+		span.RecordError(err)
+		span.SetStatus(otel_codes.Error, err.Error())
 		return nil, err
 	} else {
 		return &api.ConsumeResponse{Record: record}, nil
