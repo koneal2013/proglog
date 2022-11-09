@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -16,6 +18,7 @@ import (
 	"github.com/koneal2013/proglog/internal/auth"
 	"github.com/koneal2013/proglog/internal/config"
 	"github.com/koneal2013/proglog/internal/log"
+	"github.com/koneal2013/proglog/internal/observability"
 )
 
 func TestServer(t *testing.T) {
@@ -28,7 +31,6 @@ func TestServer(t *testing.T) {
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
 		"consume past log boundary fails":                    testConsumePastBoundary,
 		"unauthorized fails":                                 testUnauthorized,
-		"test trace":                                         testTrace,
 	} {
 		t.Run(scenario, func(t *testing.T) {
 			rootClient, nobodyClient, config, teardown := setupTest(t, nil)
@@ -43,6 +45,12 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
+	tp := observability.NewTrace("test.proglog", "localhost:4317", false)
+	defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
+		err := tp.Shutdown(ctx)
+		require.NoError(t, err)
+	}(t, tp, context.Background())
+
 	newClient := func(crtPath, keyPath string) (*grpc.ClientConn, api.LogClient, []grpc.DialOption) {
 		tlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
 			CertFile: crtPath,
@@ -52,7 +60,8 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 		})
 		require.NoError(t, err)
 		tlsCreds := credentials.NewTLS(tlsConfig)
-		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+			grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor())}
 		conn, err := grpc.Dial(l.Addr().String(), opts...)
 		require.NoError(t, err)
 		client := api.NewLogClient(conn)
@@ -102,10 +111,6 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 		l.Close()
 		clog.Remove()
 	}
-}
-
-func testTrace(t *testing.T, client api.LogClient, _ api.LogClient, c *Config) {
-	t.Helper()
 }
 
 func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config) {
@@ -170,7 +175,8 @@ func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Con
 		for i, record := range records {
 			res, err := stream.Recv()
 			require.NoError(t, err)
-			require.Equal(t, res.Record, &api.Record{Value: record.Value, Offset: uint64(i)})
+			require.Equal(t, res.Record.Value, record.Value)
+			require.Equal(t, res.Record.Offset, uint64(i))
 		}
 	}
 }

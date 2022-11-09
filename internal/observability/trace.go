@@ -12,14 +12,25 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/koneal2013/proglog/internal/config"
 )
 
-// New configures an OpenTelemetry exporter and trace provider
-func New(serviceName, collectorURL string, insecure bool) *sdktrace.TracerProvider {
+// NewTrace configures an OpenTelemetry exporter and trace provider
+func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerProvider {
+	tlsConfig, _ := config.SetupTLSConfig(config.TLSConfig{
+		CertFile: config.ServerCertFile,
+		KeyFile:  config.ServerKeyFile,
+		CAFile:   config.CAFile,
+		Server:   true,
+	})
 
-	secureOption := otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	secureOption := otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsConfig))
 	if insecure {
 		secureOption = otlptracegrpc.WithInsecure()
+	}
+	headers := map[string]string{
+		"signoz-access-token": "",
 	}
 
 	exporter, err := otlptrace.New(
@@ -27,6 +38,7 @@ func New(serviceName, collectorURL string, insecure bool) *sdktrace.TracerProvid
 		otlptracegrpc.NewClient(
 			secureOption,
 			otlptracegrpc.WithEndpoint(collectorURL),
+			otlptracegrpc.WithHeaders(headers),
 		),
 	)
 
@@ -35,8 +47,11 @@ func New(serviceName, collectorURL string, insecure bool) *sdktrace.TracerProvid
 	}
 	resources, err := resource.New(
 		context.Background(),
+		resource.WithFromEnv(),
+		resource.WithProcess(),
 		resource.WithAttributes(
 			attribute.String("service.name", serviceName),
+			attribute.String("library.language", "go"),
 		),
 	)
 	if err != nil {

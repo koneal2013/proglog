@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
@@ -14,12 +15,10 @@ import (
 	peer2 "google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
-	api "github.com/koneal2013/proglog/api/v1"
-	"github.com/koneal2013/proglog/internal/observability"
-
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+
+	api "github.com/koneal2013/proglog/api/v1"
 )
 
 const (
@@ -43,17 +42,17 @@ func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, err
 				return zap.Int64("grpc.time_ns", duration.Nanoseconds())
 			}),
 	}
-	tp := observability.New("test.proglog", "localhost:4317", true)
+	logger.Info("test")
 	opts = append(opts, grpc.StreamInterceptor(
 		grpcmiddleware.ChainStreamServer(
 			grpc_ctxtags.StreamServerInterceptor(),
 			grpc_zap.StreamServerInterceptor(logger, zapOpts...),
-			otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 			grpcauth.StreamServerInterceptor(authenticate),
+			otelgrpc.StreamServerInterceptor(),
 		)), grpc.UnaryInterceptor(grpcmiddleware.ChainUnaryServer(
 		grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpcauth.UnaryServerInterceptor(authenticate),
+		otelgrpc.UnaryServerInterceptor(),
 	)))
 	gsrv := grpc.NewServer(opts...)
 	if srv, err := newGrpcServer(config); err != nil {
