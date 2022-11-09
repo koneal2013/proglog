@@ -29,16 +29,11 @@ func NewTrace(serviceName, collectorURL string, insecure bool) *sdktrace.TracerP
 	if insecure {
 		secureOption = otlptracegrpc.WithInsecure()
 	}
-	headers := map[string]string{
-		"signoz-access-token": "",
-	}
-
 	exporter, err := otlptrace.New(
 		context.Background(),
 		otlptracegrpc.NewClient(
 			secureOption,
 			otlptracegrpc.WithEndpoint(collectorURL),
-			otlptracegrpc.WithHeaders(headers),
 		),
 	)
 
