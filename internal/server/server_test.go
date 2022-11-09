@@ -45,7 +45,8 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	tp := observability.NewTrace("test.proglog", "localhost:4317", false)
+	tp, err := observability.NewTrace("test.proglog", "localhost:4317", false)
+	require.NoError(t, err)
 	defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
 		err := tp.Shutdown(ctx)
 		require.NoError(t, err)
