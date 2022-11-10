@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -55,8 +54,6 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	tp, err := observability.NewTrace("test.proglog", "localhost:4317", logger, true)
 	require.NoError(t, err)
 	defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
-		tp.ForceFlush(ctx)
-		time.Sleep(time.Second * 5)
 		err := tp.Shutdown(ctx)
 		require.NoError(t, err)
 	}(t, tp, context.Background())
@@ -103,6 +100,7 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	cfg = &Config{
 		CommitLog:  clog,
 		Authorizer: authorizer,
+		Logger:     logger,
 	}
 	if fn != nil {
 		fn(cfg)
