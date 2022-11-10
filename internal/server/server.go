@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	otel_codes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -21,6 +22,7 @@ import (
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 
 	api "github.com/koneal2013/proglog/api/v1"
+	"github.com/koneal2013/proglog/internal/observability"
 )
 
 const (
@@ -32,12 +34,13 @@ const (
 type Config struct {
 	CommitLog  CommitLog
 	Authorizer Authorizer
+	Logger     observability.LoggingSystem
 }
 
 var _ api.LogServer = (*grpcServer)(nil)
 
 func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, error) {
-	logger := zap.L().Named("server")
+	logger := config.Logger.Named("server")
 	zapOpts := []grpc_zap.Option{
 		grpc_zap.WithDurationField(
 			func(duration time.Duration) zapcore.Field {
@@ -75,8 +78,7 @@ func newGrpcServer(config *Config) (srv *grpcServer, err error) {
 }
 
 func (s *grpcServer) Produce(ctx context.Context, req *api.ProduceRequest) (*api.ProduceResponse, error) {
-	ctx, span := otel.GetTracerProvider().Tracer("proglog").Start(ctx, "Produce")
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
 	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, produceAction); err != nil {
 		span.RecordError(err)
 		span.SetStatus(otel_codes.Error, err.Error())
@@ -92,8 +94,7 @@ func (s *grpcServer) Produce(ctx context.Context, req *api.ProduceRequest) (*api
 }
 
 func (s *grpcServer) Consume(ctx context.Context, req *api.ConsumeRequest) (*api.ConsumeResponse, error) {
-	ctx, span := otel.GetTracerProvider().Tracer("proglog").Start(ctx, "Consume")
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
 	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, consumeAction); err != nil {
 		span.RecordError(err)
 		span.SetStatus(otel_codes.Error, err.Error())
@@ -109,8 +110,11 @@ func (s *grpcServer) Consume(ctx context.Context, req *api.ConsumeRequest) (*api
 }
 
 func (s *grpcServer) ProduceStream(stream api.Log_ProduceStreamServer) error {
+	span := trace.SpanFromContext(stream.Context())
 	for {
 		if req, err := stream.Recv(); err != nil {
+			span.RecordError(err)
+			span.SetStatus(otel_codes.Error, err.Error())
 			return err
 		} else if res, err := s.Produce(stream.Context(), req); err != nil {
 			return err
@@ -121,6 +125,7 @@ func (s *grpcServer) ProduceStream(stream api.Log_ProduceStreamServer) error {
 }
 
 func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Log_ConsumeStreamServer) error {
+	span := trace.SpanFromContext(stream.Context())
 	for {
 		select {
 		case <-stream.Context().Done():
@@ -132,9 +137,13 @@ func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Log_Consu
 			case api.ErrorOffsetOutOfRange:
 				continue
 			default:
+				span.RecordError(err)
+				span.SetStatus(otel_codes.Error, err.Error())
 				return err
 			}
 			if err = stream.Send(res); err != nil {
+				span.RecordError(err)
+				span.SetStatus(otel_codes.Error, err.Error())
 				return err
 			}
 			req.Offset++

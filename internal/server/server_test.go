@@ -5,10 +5,13 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -26,6 +29,7 @@ func TestServer(t *testing.T) {
 		t *testing.T,
 		rootClient, nobodyClient api.LogClient,
 		config *Config,
+		tracer trace.Tracer,
 	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
@@ -35,7 +39,8 @@ func TestServer(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			rootClient, nobodyClient, config, teardown := setupTest(t, nil)
 			defer teardown()
-			fn(t, rootClient, nobodyClient, config)
+			tracer := otel.Tracer("test")
+			fn(t, rootClient, nobodyClient, config, tracer)
 		})
 	}
 }
@@ -45,9 +50,13 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	tp, err := observability.NewTrace("test.proglog", "localhost:4317", false)
+	logger := observability.Logger(true, "test.proglog")
+
+	tp, err := observability.NewTrace("test.proglog", "localhost:4317", logger, true)
 	require.NoError(t, err)
 	defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
+		tp.ForceFlush(ctx)
+		time.Sleep(time.Second * 5)
 		err := tp.Shutdown(ctx)
 		require.NoError(t, err)
 	}(t, tp, context.Background())
@@ -114,9 +123,9 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	}
 }
 
-func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config) {
-	ctx := context.Background()
-
+func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
+	ctx, span := tracer.Start(context.Background(), "testConsumePastBoundary")
+	defer span.End()
 	produce, err := client.Produce(ctx, &api.ProduceRequest{Record: &api.Record{Value: []byte("hello world")}})
 	require.NoError(t, err)
 
@@ -132,8 +141,9 @@ func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Conf
 
 }
 
-func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config) {
-	ctx := context.Background()
+func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
+	ctx, span := tracer.Start(context.Background(), "testProduceConsume")
+	defer span.End()
 	want := &api.Record{Value: []byte("hello world")}
 	produce, err := client.Produce(ctx, &api.ProduceRequest{Record: want})
 	require.NoError(t, err)
@@ -144,9 +154,9 @@ func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config) {
 	require.Equal(t, want.Offset, consume.Record.Offset)
 }
 
-func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Config) {
-	ctx := context.Background()
-
+func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
+	ctx, span := tracer.Start(context.Background(), "testProduceConsumeStream")
+	defer span.End()
 	records := []*api.Record{
 		{
 			Value:  []byte("first message"),
@@ -182,8 +192,9 @@ func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Con
 	}
 }
 
-func testUnauthorized(t *testing.T, _, client api.LogClient, config *Config) {
-	ctx := context.Background()
+func testUnauthorized(t *testing.T, _, client api.LogClient, config *Config, tracer trace.Tracer) {
+	ctx, span := tracer.Start(context.Background(), "testUnauthorized")
+	defer span.End()
 	if produce, err := client.Produce(ctx, &api.ProduceRequest{Record: &api.Record{Value: []byte("hello world")}}); produce != nil {
 		t.Fatalf("produce response should be nil")
 	} else {

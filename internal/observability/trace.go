@@ -2,7 +2,6 @@ package observability
 
 import (
 	"context"
-	"log"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -11,14 +10,14 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/koneal2013/proglog/internal/config"
 )
 
 // NewTrace configures an OpenTelemetry exporter and trace provider
-func NewTrace(serviceName, collectorURL string, insecure bool) (*sdktrace.TracerProvider, error) {
+func NewTrace(serviceName, collectorURL string, log LoggingSystem, insecure bool) (traceProvider *sdktrace.TracerProvider, err error) {
 	tlsConfig, _ := config.SetupTLSConfig(config.TLSConfig{
 		CertFile: config.ServerCertFile,
 		KeyFile:  config.ServerKeyFile,
@@ -30,38 +29,38 @@ func NewTrace(serviceName, collectorURL string, insecure bool) (*sdktrace.Tracer
 	if insecure {
 		secureOption = otlptracegrpc.WithInsecure()
 	}
-	exporter, err := otlptrace.New(
+	if exporter, err := otlptrace.New(
 		context.Background(),
 		otlptracegrpc.NewClient(
 			secureOption,
 			otlptracegrpc.WithEndpoint(collectorURL),
+			otlptracegrpc.WithDialOption(grpc.WithBlock()),
 		),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	resources, err := resource.New(
+	); err != nil {
+		log.Sugar().Fatal(err)
+	} else if resources, err := resource.New(
 		context.Background(),
 		resource.WithFromEnv(),
 		resource.WithProcess(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
 		resource.WithAttributes(
 			attribute.String("service.name", serviceName),
-			attribute.String("library.language", "go"),
 		),
-	)
-	if err != nil {
-		zap.L().Sugar().Errorf("Could not set resources: %v", err)
+	); err != nil {
+		log.Sugar().Errorf("Could not set resources: %v", err)
 		return nil, err
+	} else {
+
+		bsp := sdktrace.NewBatchSpanProcessor(exporter)
+
+		traceProvider = sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.AlwaysSample()),
+			sdktrace.WithSpanProcessor(bsp),
+			sdktrace.WithResource(resources),
+		)
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+		otel.SetTracerProvider(traceProvider)
 	}
-
-	traceProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(resources),
-	)
-
-	otel.SetTracerProvider(traceProvider)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-
 	return traceProvider, nil
 }
