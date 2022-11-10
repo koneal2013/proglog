@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -28,7 +27,7 @@ func TestServer(t *testing.T) {
 		t *testing.T,
 		rootClient, nobodyClient api.LogClient,
 		config *Config,
-		tracer trace.Tracer,
+		tp trace.TracerProvider,
 	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
@@ -36,27 +35,31 @@ func TestServer(t *testing.T) {
 		"unauthorized fails":                                 testUnauthorized,
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			rootClient, nobodyClient, config, teardown := setupTest(t, nil)
+			logger := observability.Logger(true, "test.proglog")
+			tpServer, err := observability.NewTrace("test.proglog", "localhost:4317", logger.Named("traceServer"), true)
+			require.NoError(t, err)
+			defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
+				err := tp.Shutdown(ctx)
+				require.NoError(t, err)
+			}(t, tpServer, context.Background())
+
+			tpClient, err := observability.NewTrace("test.proglog", "localhost:4317", logger.Named("traceClient"), true)
+			require.NoError(t, err)
+			defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
+				err := tp.Shutdown(ctx)
+				require.NoError(t, err)
+			}(t, tpClient, context.Background())
+			rootClient, nobodyClient, config, teardown := setupTest(t, logger, tpClient, tpServer, nil)
 			defer teardown()
-			tracer := otel.Tracer("test")
-			fn(t, rootClient, nobodyClient, config, tracer)
+			fn(t, rootClient, nobodyClient, config, tpClient)
 		})
 	}
 }
 
-func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
+func setupTest(t *testing.T, logger observability.LoggingSystem, tpClient trace.TracerProvider, tpServer trace.TracerProvider, fn func(*Config)) (rootClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-
-	logger := observability.Logger(true, "test.proglog")
-
-	tp, err := observability.NewTrace("test.proglog", "localhost:4317", logger.Named("trace"), true)
-	require.NoError(t, err)
-	defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
-		err := tp.Shutdown(ctx)
-		require.NoError(t, err)
-	}(t, tp, context.Background())
 
 	newClient := func(crtPath, keyPath string) (*grpc.ClientConn, api.LogClient, []grpc.DialOption) {
 		tlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
@@ -67,8 +70,8 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 		})
 		require.NoError(t, err)
 		tlsCreds := credentials.NewTLS(tlsConfig)
-		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-			grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor())}
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor(otelgrpc.WithTracerProvider(tpClient))),
+			grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor(otelgrpc.WithTracerProvider(tpClient)))}
 		conn, err := grpc.Dial(l.Addr().String(), opts...)
 		require.NoError(t, err)
 		client := api.NewLogClient(conn)
@@ -98,9 +101,10 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	require.NoError(t, err)
 
 	cfg = &Config{
-		CommitLog:  clog,
-		Authorizer: authorizer,
-		Logger:     logger,
+		CommitLog:     clog,
+		Authorizer:    authorizer,
+		Logger:        logger,
+		TraceProvider: tpServer,
 	}
 	if fn != nil {
 		fn(cfg)
@@ -121,8 +125,8 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient, nobodyClient api.Log
 	}
 }
 
-func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
-	ctx, span := tracer.Start(context.Background(), "testConsumePastBoundary")
+func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Config, tp trace.TracerProvider) {
+	ctx, span := tp.Tracer("test").Start(context.Background(), "testConsumePastBoundary")
 	defer span.End()
 	produce, err := client.Produce(ctx, &api.ProduceRequest{Record: &api.Record{Value: []byte("hello world")}})
 	require.NoError(t, err)
@@ -139,8 +143,8 @@ func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, config *Conf
 
 }
 
-func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
-	ctx, span := tracer.Start(context.Background(), "testProduceConsume")
+func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config, tp trace.TracerProvider) {
+	ctx, span := tp.Tracer("test").Start(context.Background(), "testProduceConsume")
 	defer span.End()
 	want := &api.Record{Value: []byte("hello world")}
 	produce, err := client.Produce(ctx, &api.ProduceRequest{Record: want})
@@ -152,8 +156,8 @@ func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config, t
 	require.Equal(t, want.Offset, consume.Record.Offset)
 }
 
-func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Config, tracer trace.Tracer) {
-	ctx, span := tracer.Start(context.Background(), "testProduceConsumeStream")
+func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Config, tp trace.TracerProvider) {
+	ctx, span := tp.Tracer("test").Start(context.Background(), "testProduceConsumeStream")
 	defer span.End()
 	records := []*api.Record{
 		{
@@ -190,8 +194,8 @@ func testProduceConsumeStream(t *testing.T, client, _ api.LogClient, config *Con
 	}
 }
 
-func testUnauthorized(t *testing.T, _, client api.LogClient, config *Config, tracer trace.Tracer) {
-	ctx, span := tracer.Start(context.Background(), "testUnauthorized")
+func testUnauthorized(t *testing.T, _, client api.LogClient, config *Config, tp trace.TracerProvider) {
+	ctx, span := tp.Tracer("test").Start(context.Background(), "testUnauthorized")
 	defer span.End()
 	if produce, err := client.Produce(ctx, &api.ProduceRequest{Record: &api.Record{Value: []byte("hello world")}}); produce != nil {
 		t.Fatalf("produce response should be nil")

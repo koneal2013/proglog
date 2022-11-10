@@ -7,7 +7,6 @@ import (
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
 	otel_codes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -32,9 +31,10 @@ const (
 )
 
 type Config struct {
-	CommitLog  CommitLog
-	Authorizer Authorizer
-	Logger     observability.LoggingSystem
+	CommitLog     CommitLog
+	Authorizer    Authorizer
+	Logger        observability.LoggingSystem
+	TraceProvider trace.TracerProvider
 }
 
 var _ api.LogServer = (*grpcServer)(nil)
@@ -52,11 +52,11 @@ func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, err
 			grpc_ctxtags.StreamServerInterceptor(),
 			grpc_zap.StreamServerInterceptor(logger, zapOpts...),
 			grpcauth.StreamServerInterceptor(authenticate),
-			otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(otel.GetTracerProvider())),
+			otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(config.TraceProvider)),
 		)), grpc.UnaryInterceptor(grpcmiddleware.ChainUnaryServer(
 		grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
 		grpcauth.UnaryServerInterceptor(authenticate),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(otel.GetTracerProvider())),
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(config.TraceProvider)),
 	)))
 	gsrv := grpc.NewServer(opts...)
 	if srv, err := newGrpcServer(config); err != nil {
