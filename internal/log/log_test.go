@@ -1,4 +1,4 @@
-package log
+package log_test
 
 import (
 	"io"
@@ -9,10 +9,15 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	log_v1 "github.com/koneal2013/proglog/api/v1"
+	logpkg "github.com/koneal2013/proglog/internal/log"
+)
+
+const (
+	lenWidth = 8
 )
 
 func TestLog(t *testing.T) {
-	for scenario, fn := range map[string]func(t *testing.T, log *Log){
+	for scenario, fn := range map[string]func(t *testing.T, log *logpkg.Log){
 		"append and read a record succeeds": testAppendRead,
 		"offset out of range error":         testOutOfRangeErr,
 		"init with existing segments":       testInitExisting,
@@ -24,9 +29,9 @@ func TestLog(t *testing.T) {
 			require.NoError(t, err)
 			defer os.RemoveAll(dir)
 
-			c := Config{}
+			c := logpkg.Config{}
 			c.Segment.MaxStoreBytes = 32
-			log, err := NewLog(dir, c)
+			log, err := logpkg.NewLog(dir, c)
 			require.NoError(t, err)
 
 			fn(t, log)
@@ -34,7 +39,7 @@ func TestLog(t *testing.T) {
 	}
 }
 
-func testTruncate(t *testing.T, log *Log) {
+func testTruncate(t *testing.T, log *logpkg.Log) {
 	append := &log_v1.Record{Value: []byte("hello world")}
 	for i := 0; i < 3; i++ {
 		_, err := log.Append(append)
@@ -47,7 +52,7 @@ func testTruncate(t *testing.T, log *Log) {
 	require.Error(t, err)
 }
 
-func testReader(t *testing.T, log *Log) {
+func testReader(t *testing.T, log *logpkg.Log) {
 	append := &log_v1.Record{Value: []byte("hello world")}
 	off, err := log.Append(append)
 	require.NoError(t, err)
@@ -64,7 +69,7 @@ func testReader(t *testing.T, log *Log) {
 
 }
 
-func testInitExisting(t *testing.T, log *Log) {
+func testInitExisting(t *testing.T, log *logpkg.Log) {
 	append := &log_v1.Record{Value: []byte("hello world")}
 
 	for i := 0; i < 3; i++ {
@@ -80,7 +85,7 @@ func testInitExisting(t *testing.T, log *Log) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), off)
 
-	n, err := NewLog(log.Dir, log.Config)
+	n, err := logpkg.NewLog(log.Dir, log.Config)
 	require.NoError(t, err)
 
 	off, err = n.LowestOffset()
@@ -92,7 +97,7 @@ func testInitExisting(t *testing.T, log *Log) {
 
 }
 
-func testOutOfRangeErr(t *testing.T, log *Log) {
+func testOutOfRangeErr(t *testing.T, log *logpkg.Log) {
 	read, err := log.Read(1)
 	require.Nil(t, read)
 	apiErr := err.(log_v1.ErrorOffsetOutOfRange)
@@ -100,7 +105,7 @@ func testOutOfRangeErr(t *testing.T, log *Log) {
 
 }
 
-func testAppendRead(t *testing.T, log *Log) {
+func testAppendRead(t *testing.T, log *logpkg.Log) {
 	append := &log_v1.Record{Value: []byte("hello world")}
 	off, err := log.Append(append)
 	require.NoError(t, err)

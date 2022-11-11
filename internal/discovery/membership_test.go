@@ -1,4 +1,4 @@
-package discovery
+package discovery_test
 
 import (
 	"fmt"
@@ -8,6 +8,8 @@ import (
 	"github.com/hashicorp/serf/serf"
 	"github.com/stretchr/testify/require"
 	"github.com/travisjeffery/go-dynaport"
+
+	"github.com/koneal2013/proglog/internal/discovery"
 )
 
 type handler struct {
@@ -54,12 +56,12 @@ func TestMembership(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", 2), <-handler.leaves)
 }
 
-func setupMember(t *testing.T, members []*Membership) ([]*Membership, *handler) {
+func setupMember(t *testing.T, members []*discovery.Membership) ([]*discovery.Membership, *handler) {
 	id := len(members)
 	ports := dynaport.Get(1)
 	addr := fmt.Sprintf("%s:%d", "127.0.0.1", ports[0])
 	tags := map[string]string{"rpc_addr": addr}
-	c := Config{
+	c := discovery.Config{
 		NodeName: fmt.Sprintf("%d", id),
 		BindAddr: addr,
 		Tags:     tags,
@@ -73,7 +75,7 @@ func setupMember(t *testing.T, members []*Membership) ([]*Membership, *handler) 
 			members[0].BindAddr,
 		}
 	}
-	m, err := New(h, c)
+	m, err := discovery.New(h, c)
 	require.NoError(t, err)
 	members = append(members, m)
 	return members, h
