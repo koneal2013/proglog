@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -17,7 +18,8 @@ import (
 )
 
 // NewTrace configures an OpenTelemetry exporter and trace provider
-func NewTrace(serviceName, collectorURL string, log LoggingSystem, insecure bool) (traceProvider *sdktrace.TracerProvider, err error) {
+func NewTrace(serviceName, collectorURL string, insecure bool) (traceProvider *sdktrace.TracerProvider, err error) {
+	log := zap.L().Named("trace")
 	tlsConfig, _ := config.SetupTLSConfig(config.TLSConfig{
 		CertFile: config.ServerCertFile,
 		KeyFile:  config.ServerKeyFile,

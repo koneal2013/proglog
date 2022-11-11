@@ -22,12 +22,18 @@ type LoggingSystem interface {
 	Core() zapcore.Core
 }
 
-func Logger(isDevelopment bool, serviceName string, options ...zap.Option) LoggingSystem {
-	var logger LoggingSystem
+func NewLogger(isDevelopment bool, serviceName string, options ...zap.Option) (LoggingSystem, error) {
 	if isDevelopment {
-		logger, _ = zap.NewDevelopment(options...)
+		if logger, err := zap.NewDevelopment(options...); err != nil {
+			return nil, err
+		} else {
+			return logger.Named(serviceName), nil
+		}
 	} else {
-		logger, _ = zap.NewProduction(options...)
+		if logger, err := zap.NewProduction(options...); err != nil {
+			return nil, err
+		} else {
+			return logger.Named(serviceName), nil
+		}
 	}
-	return logger.Named(serviceName)
 }

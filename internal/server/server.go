@@ -30,9 +30,8 @@ const (
 )
 
 type Config struct {
-	CommitLog     CommitLog
-	Authorizer    Authorizer
-	TraceProvider trace.TracerProvider
+	CommitLog  CommitLog
+	Authorizer Authorizer
 }
 
 var _ api.LogServer = (*grpcServer)(nil)
@@ -50,11 +49,11 @@ func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, err
 			grpc_ctxtags.StreamServerInterceptor(),
 			grpc_zap.StreamServerInterceptor(logger, zapOpts...),
 			grpcauth.StreamServerInterceptor(authenticate),
-			otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(config.TraceProvider)),
+			otelgrpc.StreamServerInterceptor(),
 		)), grpc.UnaryInterceptor(grpcmiddleware.ChainUnaryServer(
 		grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
 		grpcauth.UnaryServerInterceptor(authenticate),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(config.TraceProvider)),
+		otelgrpc.UnaryServerInterceptor(),
 	)))
 	gsrv := grpc.NewServer(opts...)
 	if srv, err := newGrpcServer(config); err != nil {

@@ -35,28 +35,27 @@ func TestServer(t *testing.T) {
 		"unauthorized fails":                                 testUnauthorized,
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			logger := observability.Logger(true, "test.proglog")
-			tpServer, err := observability.NewTrace("test.proglog", "localhost:4317", logger.Named("traceServer"), true)
+			tpServer, err := observability.NewTrace("test.proglog", "localhost:4317", true)
 			require.NoError(t, err)
 			defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
 				err := tp.Shutdown(ctx)
 				require.NoError(t, err)
 			}(t, tpServer, context.Background())
 
-			tpClient, err := observability.NewTrace("test.proglog", "localhost:4317", logger.Named("traceClient"), true)
+			tpClient, err := observability.NewTrace("test.proglog", "localhost:4317", true)
 			require.NoError(t, err)
 			defer func(t *testing.T, tp *sdktrace.TracerProvider, ctx context.Context) {
 				err := tp.Shutdown(ctx)
 				require.NoError(t, err)
 			}(t, tpClient, context.Background())
-			rootClient, nobodyClient, config, teardown := setupTest(t, logger, tpClient, tpServer, nil)
+			rootClient, nobodyClient, config, teardown := setupTest(t, tpClient, nil)
 			defer teardown()
 			fn(t, rootClient, nobodyClient, config, tpClient)
 		})
 	}
 }
 
-func setupTest(t *testing.T, logger observability.LoggingSystem, tpClient trace.TracerProvider, tpServer trace.TracerProvider, fn func(*Config)) (rootClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
+func setupTest(t *testing.T, tpClient trace.TracerProvider, fn func(*Config)) (rootClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -101,9 +100,8 @@ func setupTest(t *testing.T, logger observability.LoggingSystem, tpClient trace.
 	require.NoError(t, err)
 
 	cfg = &Config{
-		CommitLog:     clog,
-		Authorizer:    authorizer,
-		TraceProvider: tpServer,
+		CommitLog:  clog,
+		Authorizer: authorizer,
 	}
 	if fn != nil {
 		fn(cfg)

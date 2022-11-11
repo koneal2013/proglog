@@ -8,15 +8,7 @@ import (
 	"github.com/hashicorp/serf/serf"
 	"github.com/stretchr/testify/require"
 	"github.com/travisjeffery/go-dynaport"
-
-	"github.com/koneal2013/proglog/internal/observability"
 )
-
-var logger observability.LoggingSystem
-
-func init() {
-	logger = observability.Logger(true, "test.proglog")
-}
 
 type handler struct {
 	joins  chan map[string]string
@@ -81,7 +73,7 @@ func setupMember(t *testing.T, members []*Membership) ([]*Membership, *handler) 
 			members[0].BindAddr,
 		}
 	}
-	m, err := New(h, c, logger)
+	m, err := New(h, c)
 	require.NoError(t, err)
 	members = append(members, m)
 	return members, h

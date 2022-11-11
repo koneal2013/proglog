@@ -1,11 +1,13 @@
 package agent
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
 
+	"go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -14,27 +16,31 @@ import (
 	"github.com/koneal2013/proglog/internal/auth"
 	"github.com/koneal2013/proglog/internal/discovery"
 	"github.com/koneal2013/proglog/internal/log"
+	"github.com/koneal2013/proglog/internal/observability"
 	"github.com/koneal2013/proglog/internal/server"
 )
 
 type Config struct {
-	ServerTLSConfig *tls.Config
-	PeerTLSConfig   *tls.Config
-	DataDir         string
-	BindAddr        string
-	PRCPort         int
-	NodeName        string
-	StartJoinAddrs  []string
-	ACLModelFile    string
-	ACLPolicyFile   string
+	ServerTLSConfig       *tls.Config
+	PeerTLSConfig         *tls.Config
+	DataDir               string
+	BindAddr              string
+	PRCPort               int
+	NodeName              string
+	StartJoinAddrs        []string
+	ACLModelFile          string
+	ACLPolicyFile         string
+	OTPLCollectorURL      string
+	OTPLCollectorInsecure bool
 }
 type Agent struct {
 	Config
 
-	log        *log.Log
-	server     *grpc.Server
-	membership *discovery.Membership
-	replicator *log.Replicator
+	log           *log.Log
+	server        *grpc.Server
+	membership    *discovery.Membership
+	replicator    *log.Replicator
+	traceProvider *trace.TracerProvider
 
 	shutdown     bool
 	shutdowns    chan struct{}
@@ -42,10 +48,10 @@ type Agent struct {
 }
 
 func (a *Agent) setupLogger() error {
-	if logger, err := zap.NewDevelopment(); err != nil {
+	if logger, err := observability.NewLogger(true, "proglog"); err != nil {
 		return err
 	} else {
-		zap.ReplaceGlobals(logger)
+		zap.ReplaceGlobals(logger.Named(a.Config.NodeName))
 	}
 	return nil
 }
@@ -59,7 +65,10 @@ func (a *Agent) setupLog() error {
 func (a *Agent) setupServer() error {
 	if authorizer, err := auth.New(a.Config.ACLModelFile, a.Config.ACLPolicyFile); err != nil {
 		return err
+	} else if tp, err := observability.NewTrace(fmt.Sprintf("proglog.%s", a.Config.NodeName), a.Config.OTPLCollectorURL, a.Config.OTPLCollectorInsecure); err != nil {
+		return err
 	} else {
+		a.traceProvider = tp
 		serverConfig := &server.Config{CommitLog: a.log, Authorizer: authorizer}
 		var opts []grpc.ServerOption
 		if a.Config.ServerTLSConfig != nil {
@@ -133,6 +142,7 @@ func (a *Agent) Shutdown() error {
 	}
 	a.shutdown = true
 	close(a.shutdowns)
+	a.traceProvider.Shutdown(context.Background())
 
 	shutdown := []func() error{
 		a.membership.Leave,
