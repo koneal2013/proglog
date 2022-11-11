@@ -29,11 +29,11 @@ type Membership struct {
 	logger  observability.LoggingSystem
 }
 
-func New(handler Handler, config Config, logger observability.LoggingSystem) (*Membership, error) {
+func New(handler Handler, config Config) (*Membership, error) {
 	c := &Membership{
 		Config:  config,
 		handler: handler,
-		logger:  logger.Named("membership"),
+		logger:  zap.L().Named("membership"),
 	}
 	if err := c.setupSerf(); err != nil {
 		return nil, err
