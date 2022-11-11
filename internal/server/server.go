@@ -21,7 +21,6 @@ import (
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 
 	api "github.com/koneal2013/proglog/api/v1"
-	"github.com/koneal2013/proglog/internal/observability"
 )
 
 const (
@@ -33,14 +32,13 @@ const (
 type Config struct {
 	CommitLog     CommitLog
 	Authorizer    Authorizer
-	Logger        observability.LoggingSystem
 	TraceProvider trace.TracerProvider
 }
 
 var _ api.LogServer = (*grpcServer)(nil)
 
 func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, error) {
-	logger := config.Logger.Named("server")
+	logger := zap.L().Named("server")
 	zapOpts := []grpc_zap.Option{
 		grpc_zap.WithDurationField(
 			func(duration time.Duration) zapcore.Field {

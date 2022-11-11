@@ -103,7 +103,6 @@ func setupTest(t *testing.T, logger observability.LoggingSystem, tpClient trace.
 	cfg = &Config{
 		CommitLog:     clog,
 		Authorizer:    authorizer,
-		Logger:        logger,
 		TraceProvider: tpServer,
 	}
 	if fn != nil {

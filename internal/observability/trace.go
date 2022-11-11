@@ -60,6 +60,7 @@ func NewTrace(serviceName, collectorURL string, log LoggingSystem, insecure bool
 			sdktrace.WithResource(resources),
 		)
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+		otel.SetTracerProvider(traceProvider)
 	}
 	return traceProvider, nil
 }
