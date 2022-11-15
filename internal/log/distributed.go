@@ -297,6 +297,62 @@ func (l *DistributedLog) Append(record *api.Record) (uint64, error) {
 	}
 }
 
+func (l *DistributedLog) Join(id, addr string) error {
+	configFuture := l.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		return err
+	}
+	serverID := raft.ServerID(id)
+	serverAddr := raft.ServerAddress(addr)
+	for _, srv := range configFuture.Configuration().Servers {
+		if srv.ID == serverID || srv.Address == serverAddr {
+			if srv.ID == serverID && srv.Address == serverAddr {
+				// server has already joined
+				return nil
+			}
+			// remove the existing server id / address association
+			removeFuture := l.raft.RemoveServer(serverID, 0, 0)
+			if err := removeFuture.Error(); err != nil {
+				return err
+			}
+		}
+	}
+	addFuture := l.raft.AddVoter(serverID, serverAddr, 0, 0)
+	if err := addFuture.Error(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (l *DistributedLog) Leave(id string) error {
+	removeFuture := l.raft.RemoveServer(raft.ServerID(id), 0, 0)
+	return removeFuture.Error()
+}
+
+func (l *DistributedLog) WaitForLeader(timeout time.Duration) error {
+	timeoutc := time.After(timeout)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeoutc:
+			return fmt.Errorf("timed out")
+		case <-ticker.C:
+			if laddr, _ := l.raft.LeaderWithID(); laddr != "" {
+				return nil
+			}
+		}
+	}
+}
+
+func (l *DistributedLog) Close() error {
+	f := l.raft.Shutdown()
+	if err := f.Error(); err != nil {
+		return err
+	}
+	return l.log.Close()
+}
+
 var _ raft.StreamLayer = (*StreamLayer)(nil)
 
 type StreamLayer struct {
@@ -319,7 +375,7 @@ func (s *StreamLayer) Dial(addr raft.ServerAddress, timeout time.Duration) (conn
 	dialer := &net.Dialer{Timeout: timeout}
 	if conn, err = dialer.Dial("tcp", string(addr)); err != nil {
 		return nil, err
-	} else if _, err = conn.Write([]byte(byte(RaftRPC))); err != nil {
+	} else if _, err = conn.Write([]byte{byte(RaftRPC)}); err != nil {
 		return nil, err
 	} else if s.peerTLSConfig != nil {
 		conn = tls.Client(conn, s.peerTLSConfig)
