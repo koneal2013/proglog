@@ -63,6 +63,7 @@ func TestAgent(t *testing.T) {
 			ACLPolicyFile:         config.ACLPolicyFile,
 			OTPLCollectorURL:      "localhost:4317",
 			OTPLCollectorInsecure: true,
+			IsDevelopment:         true,
 		})
 		require.NoError(t, err)
 

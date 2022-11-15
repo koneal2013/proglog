@@ -32,6 +32,7 @@ type Config struct {
 	ACLPolicyFile         string
 	OTPLCollectorURL      string
 	OTPLCollectorInsecure bool
+	IsDevelopment         bool
 }
 type Agent struct {
 	Config
@@ -48,7 +49,7 @@ type Agent struct {
 }
 
 func (a *Agent) setupLogger() error {
-	if logger, err := observability.NewLogger(true, "proglog"); err != nil {
+	if logger, err := observability.NewLogger(a.Config.IsDevelopment, "proglog"); err != nil {
 		return err
 	} else {
 		zap.ReplaceGlobals(logger.Named(a.Config.NodeName))
