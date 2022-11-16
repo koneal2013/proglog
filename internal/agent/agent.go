@@ -133,7 +133,7 @@ func (a *Agent) setupMembership() error {
 }
 
 func (a *Agent) setupMux() error {
-	rpcAddr := fmt.Sprintf("%d", a.Config.RPCPort)
+	rpcAddr := fmt.Sprintf(":%d", a.Config.RPCPort)
 	if ln, err := net.Listen("tcp", rpcAddr); err != nil {
 		return err
 	} else {
@@ -162,7 +162,6 @@ func (a *Agent) Shutdown() error {
 
 	shutdown := []func() error{
 		a.membership.Leave,
-		a.log.Close,
 		func() error {
 			a.server.GracefulStop()
 			return nil
