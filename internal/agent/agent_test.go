@@ -12,6 +12,7 @@ import (
 	"github.com/travisjeffery/go-dynaport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 
 	api "github.com/koneal2013/proglog/api/v1"
 	"github.com/koneal2013/proglog/internal/agent"
@@ -56,7 +57,7 @@ func TestAgent(t *testing.T) {
 			PeerTLSConfig:         peerTLSConfig,
 			DataDir:               dataDir,
 			BindAddr:              bindAddr,
-			PRCPort:               rpcPort,
+			RPCPort:               rpcPort,
 			NodeName:              fmt.Sprintf("%d", i),
 			StartJoinAddrs:        startJoinAddrs,
 			ACLModelFile:          config.ACLModelFile,
@@ -64,6 +65,7 @@ func TestAgent(t *testing.T) {
 			OTPLCollectorURL:      "localhost:4317",
 			OTPLCollectorInsecure: true,
 			IsDevelopment:         true,
+			Bootstrap:             i == 0,
 		})
 		require.NoError(t, err)
 
@@ -92,6 +94,13 @@ func TestAgent(t *testing.T) {
 	consumeResponse, err = followerClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset})
 	require.NoError(t, err)
 	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
+
+	consumeResponse, err = leaderClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset + 1})
+	require.Nil(t, consumeResponse)
+	require.Error(t, err)
+	got := status.Code(err)
+	want := status.Code(api.ErrorOffsetOutOfRange{}.GRPCStatus().Err())
+	require.Equal(t, got, want)
 }
 
 func client(t *testing.T, a *agent.Agent, tlsConfig *tls.Config) api.LogClient {
