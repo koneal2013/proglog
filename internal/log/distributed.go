@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
 	api "github.com/koneal2013/proglog/api/v1"
@@ -184,6 +185,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 	}
 	logConfig := l.config
 	logConfig.Segment.InitialOffSet = 1
+	logWriter := zap.NewStdLog(zap.L()).Writer()
 	if logStore, err := newLogStore(logDir, logConfig); err != nil {
 		return err
 	} else {
@@ -193,7 +195,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 			retain := 1
 			if snapshotStore, err := raft.NewFileSnapshotStore(filepath.Join(dataDir, "raft"),
 				retain,
-				os.Stderr,
+				logWriter,
 			); err != nil {
 				return err
 			} else {
@@ -203,7 +205,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 					l.config.Raft.StreamLayer,
 					maxPool,
 					timeout,
-					os.Stderr,
+					logWriter,
 				)
 				config := raft.DefaultConfig()
 				config.LocalID = l.config.Raft.LocalID

@@ -58,6 +58,15 @@ func (a *Agent) setupLogger() error {
 		return err
 	} else {
 		zap.ReplaceGlobals(logger.Named(a.Config.NodeName))
+		if a.Config.IsDevelopment {
+			if _, err := zap.RedirectStdLogAt(zap.L(), zap.DebugLevel); err != nil {
+				return err
+			} else {
+				if _, err := zap.RedirectStdLogAt(zap.L(), zap.WarnLevel); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
