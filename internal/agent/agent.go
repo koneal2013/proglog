@@ -101,7 +101,7 @@ func (a *Agent) setupServer() error {
 		return err
 	} else {
 		a.traceProvider = tp
-		serverConfig := &server.Config{CommitLog: a.log, Authorizer: authorizer}
+		serverConfig := &server.Config{CommitLog: a.log, Authorizer: authorizer, GetServerer: a.log}
 		var opts []grpc.ServerOption
 		if a.Config.ServerTLSConfig != nil {
 			creds := credentials.NewTLS(a.Config.ServerTLSConfig)
