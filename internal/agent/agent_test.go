@@ -17,6 +17,7 @@ import (
 	api "github.com/koneal2013/proglog/api/v1"
 	"github.com/koneal2013/proglog/internal/agent"
 	"github.com/koneal2013/proglog/internal/config"
+	"github.com/koneal2013/proglog/internal/loadbalance"
 )
 
 func TestAgent(t *testing.T) {
@@ -83,12 +84,13 @@ func TestAgent(t *testing.T) {
 	leaderClient := client(t, agents[0], peerTLSConfig)
 	produceResponse, err := leaderClient.Produce(context.Background(), &api.ProduceRequest{Record: &api.Record{Value: []byte("foo")}})
 	require.NoError(t, err)
-	consumeResponse, err := leaderClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset})
-	require.NoError(t, err)
-	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
 
 	// wait for replication to finish
 	time.Sleep(3 * time.Second)
+
+	consumeResponse, err := leaderClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset})
+	require.NoError(t, err)
+	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
 
 	followerClient := client(t, agents[1], peerTLSConfig)
 	consumeResponse, err = followerClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset})
@@ -108,7 +110,7 @@ func client(t *testing.T, a *agent.Agent, tlsConfig *tls.Config) api.LogClient {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
 	rpcAddr, err := a.Config.RPCAddr()
 	require.NoError(t, err)
-	conn, err := grpc.Dial(fmt.Sprintf("%s", rpcAddr), opts...)
+	conn, err := grpc.Dial(fmt.Sprintf("%s://%s", loadbalance.Name, rpcAddr), opts...)
 	require.NoError(t, err)
 	return api.NewLogClient(conn)
 }
