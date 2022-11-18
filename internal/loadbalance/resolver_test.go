@@ -49,7 +49,7 @@ func TestResolver(t *testing.T) {
 	clientCreds := credentials.NewTLS(tlsConfig)
 	opts := resolver.BuildOptions{DialCreds: clientCreds}
 	r := &loadbalance.Resolver{}
-	url := url.URL{Path: l.Addr().String()}
+	url := url.URL{Host: l.Addr().String()}
 	_, err = r.Build(resolver.Target{URL: url}, conn, opts)
 	require.NoError(t, err)
 
