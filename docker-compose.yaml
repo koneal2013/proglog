@@ -45,7 +45,7 @@ services:
   proglog-server:
     build:
       dockerfile: Dockerfile
-      context: ./server
+      context: .
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
     ports:

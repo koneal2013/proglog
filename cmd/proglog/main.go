@@ -99,6 +99,9 @@ func setupFlags(cmd *cobra.Command) error {
 		cmd.Flags().String("peer-tls-cert-file", "", "Path to peer tls cert.")
 		cmd.Flags().String("peer-tls-key-file", "", "Path to peer tls key.")
 		cmd.Flags().String("peer-tls-ca-file", "", "Path to peer certificate authority.")
+		cmd.Flags().String("optl-collector-url", "localhost:4317", "Url for OTPL tracing collector.")
+		cmd.Flags().Bool("otpl-collector-insecure", true, "Flag to enable insecure mode for OTPL Collector.")
+		cmd.Flags().Bool("is-development", false, "Flag to set log level.")
 		return viper.BindPFlags(cmd.Flags())
 	}
 	return nil
