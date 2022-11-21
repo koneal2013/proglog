@@ -19,6 +19,8 @@ import (
 
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	api "github.com/koneal2013/proglog/api/v1"
 )
@@ -57,6 +59,9 @@ func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, err
 		otelgrpc.UnaryServerInterceptor(),
 	)))
 	gsrv := grpc.NewServer(opts...)
+	hsrv := health.NewServer()
+	hsrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(gsrv, hsrv)
 	if srv, err := newGrpcServer(config); err != nil {
 		return nil, err
 	} else {

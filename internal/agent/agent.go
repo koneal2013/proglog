@@ -81,17 +81,22 @@ func (a *Agent) setupLog() error {
 	})
 	logConfig := log.Config{}
 	logConfig.Raft.StreamLayer = log.NewStreamLayer(raftLn, a.Config.ServerTLSConfig, a.Config.PeerTLSConfig)
-	logConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
-	logConfig.Raft.Bootstrap = a.Config.Bootstrap
-	var err error
-	a.log, err = log.NewDistributedLog(a.Config.DataDir, logConfig)
-	if err != nil {
+	if rpcAddr, err := a.Config.RPCAddr(); err != nil {
+		return err
+	} else {
+		logConfig.Raft.BindAddr = rpcAddr
+		logConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
+		logConfig.Raft.Bootstrap = a.Config.Bootstrap
+		var err error
+		a.log, err = log.NewDistributedLog(a.Config.DataDir, logConfig)
+		if err != nil {
+			return err
+		}
+		if a.Config.Bootstrap {
+			err = a.log.WaitForLeader(3 * time.Second)
+		}
 		return err
 	}
-	if a.Config.Bootstrap {
-		err = a.log.WaitForLeader(3 * time.Second)
-	}
-	return err
 }
 
 func (a *Agent) setupServer() error {
@@ -142,13 +147,17 @@ func (a *Agent) setupMembership() error {
 }
 
 func (a *Agent) setupMux() error {
-	rpcAddr := fmt.Sprintf(":%d", a.Config.RPCPort)
-	if ln, err := net.Listen("tcp", rpcAddr); err != nil {
+	if addr, err := net.ResolveTCPAddr("tcp", a.Config.BindAddr); err != nil {
 		return err
 	} else {
-		a.mux = cmux.New(ln)
+		rpcAddr := fmt.Sprintf("%s:%d", addr.IP.String(), a.Config.RPCPort)
+		if ln, err := net.Listen("tcp", rpcAddr); err != nil {
+			return err
+		} else {
+			a.mux = cmux.New(ln)
+		}
+		return nil
 	}
-	return nil
 }
 
 func (c *Config) RPCAddr() (string, error) {
