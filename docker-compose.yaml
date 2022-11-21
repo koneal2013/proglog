@@ -42,16 +42,17 @@ services:
 #    depends_on:
 #      - demo-server
 
-#  demo-server:
-#    build:
-#      dockerfile: Dockerfile
-#      context: ./server
-#    environment:
-#      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
-#    ports:
-#      - "7080"
-#    depends_on:
-#      - otel-collector
+  proglog-server:
+    build:
+      dockerfile: Dockerfile
+      context: ./server
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    ports:
+      - "8400"
+      - "8401"
+    depends_on:
+      - otel-collector
 
   prometheus:
     container_name: prometheus
