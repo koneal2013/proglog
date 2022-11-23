@@ -3,8 +3,8 @@
 # Declare variables to be passed into your templates.
 
 image:
-  repository: github.com/koneal2013/proglog
-  tag: 0.0.1
+  repository: koneal2013/proglog
+  tag: v0.0.10
   pullPolicy: IfNotPresent
 serfPort: 8401
 rpcPort: 8400

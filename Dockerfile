@@ -9,11 +9,9 @@ RUN go mod download
 COPY . /go/src/proglog
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /go/bin/proglog ./cmd/proglog
-RUN GRPC_HEALTH_PROBE_VERSION=v0.3.2 && \
-    wget -q0/go/bin/grpc_health_probe \
-    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/ \
-    ${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
-    chmod +x /go/bin/grpc_health_probe \
+
+COPY ./grpc_health_probe-linux-amd64 /go/bin/grpc_health_probe
+RUN chmod +x /go/bin/grpc_health_probe
 
 FROM scratch
 COPY --from=build /go/bin/proglog  /bin/proglog
